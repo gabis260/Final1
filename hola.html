@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tablero Davivienda - Control de Procesos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body class="bg-gradient-to-br from-white to-red-50">
+
+<!-- Header Sticky -->
+<div class="sticky top-0 z-50 bg-white border-b-2 border-red-500 shadow-lg">
+    <div class="max-w-7xl mx-auto px-4 py-4">
+        <div class="flex justify-between items-center flex-wrap gap-3">
+            <div>
+                <h1 class="text-2xl md:text-3xl font-bold text-gray-900 flex items-center gap-2">
+                    🏦 Davivienda Control
+                    <span id="alertBadge" class="hidden animate-pulse bg-red-600 text-white text-xs px-2 py-1 rounded-full"></span>
+                </h1>
+                <p class="text-gray-600 text-xs" id="headerInfo">Esperando datos...</p>
+            </div>
+            
+            <div class="flex gap-2 flex-wrap items-center">
+                <div class="flex gap-1 bg-white border border-gray-300 rounded-lg p-1">
+                    <button onclick="setFilter('todos')" id="btnTodos" class="px-2 py-1 rounded text-xs font-semibold bg-red-600 text-white">Todos</button>
+                    <button onclick="setFilter('produccion')" id="btnProduccion" class="px-2 py-1 rounded text-xs font-semibold text-gray-600">Producción</button>
+                    <button onclick="setFilter('pruebas')" id="btnPruebas" class="px-2 py-1 rounded text-xs font-semibold text-gray-600">Pruebas</button>
+                </div>
+
+                <label class="cursor-pointer bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-lg font-semibold inline-flex items-center gap-1 text-xs">
+                    📂 Datos
+                    <input type="file" accept=".csv,.txt,.tsv" class="hidden" onchange="handleFileUpload(event, 'datos')">
+                </label>
+                
+                <label class="cursor-pointer bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-lg font-semibold inline-flex items-center gap-1 text-xs">
+                    📅 Fechas
+                    <input type="file" accept=".csv,.txt,.tsv" class="hidden" onchange="handleFileUpload(event, 'fechas')">
+                </label>
+
+                <label class="cursor-pointer bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-lg font-semibold inline-flex items-center gap-1 text-xs">
+                    👥 Correos
+                    <input type="file" accept=".csv,.txt,.tsv" class="hidden" onchange="handleFileUpload(event, 'correos')">
+                </label>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main Content -->
+<div class="max-w-7xl mx-auto px-4 py-6 space-y-6">
+    
+    <!-- KPIs Principales -->
+    <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <div class="bg-white border-2 border-red-500 rounded-xl p-4 shadow-lg hover:shadow-xl transition-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-lg">⏰</span>
+                <span class="text-2xl font-bold text-red-600 font-mono" id="countdown">00:00:00</span>
+            </div>
+            <h3 class="text-gray-600 text-xs font-semibold">Deadline 3:30 PM</h3>
+        </div>
+
+        <div class="bg-white border border-gray-300 rounded-xl p-4 shadow-lg hover:shadow-xl transition-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-lg">✅</span>
+                <span class="text-2xl font-bold text-gray-900" id="beforeDeadline">0</span>
+            </div>
+            <h3 class="text-gray-600 text-xs font-semibold">Antes 3:30 PM</h3>
+        </div>
+
+        <div class="bg-white border border-gray-300 rounded-xl p-4 shadow-lg hover:shadow-xl transition-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-lg">⏰</span>
+                <span class="text-2xl font-bold text-gray-900" id="afterDeadline">0</span>
+            </div>
+            <h3 class="text-gray-600 text-xs font-semibold">Después 3:30 PM</h3>
+        </div>
+
+        <div class="bg-white border border-gray-300 rounded-xl p-4 shadow-lg hover:shadow-xl transition-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-lg">📊</span>
+                <span class="text-2xl font-bold text-gray-900" id="todayProcesses">0</span>
+            </div>
+            <h3 class="text-gray-600 text-xs font-semibold">Procesos Hoy</h3>
+        </div>
+
+        <div id="errorCard" class="bg-white border-2 border-green-500 rounded-xl p-4 shadow-lg hover:shadow-xl transition-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-lg" id="errorIcon">✅</span>
+                <span class="text-2xl font-bold text-gray-900" id="errorCount">0</span>
+            </div>
+            <h3 class="text-gray-600 text-xs font-semibold">Con Errores</h3>
+        </div>
+    </div>
+
+    <!-- Comparativa Semanal -->
+    <div id="weeklyComparison" class="grid lg:grid-cols-3 gap-4"></div>
+
+    <!-- Procesos Nuevos -->
+    <div id="newProcesses" class="hidden bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-500 rounded-xl p-4 shadow-lg"></div>
+
+    <!-- Buscador y Info Proceso -->
+    <div class="grid lg:grid-cols-2 gap-4">
+        <div class="bg-white border border-gray-300 rounded-xl p-4 shadow-lg">
+            <h3 class="text-lg font-bold text-gray-900 mb-3 flex items-center gap-2">
+                🔍 Buscar Proceso
+            </h3>
+            <div class="flex gap-2 mb-3">
+                <input type="text" id="searchInput" placeholder="Buscar proceso o usuario..." 
+                    class="flex-1 bg-white text-gray-900 px-3 py-2 rounded-lg border-2 border-gray-300 focus:border-red-500 outline-none text-sm" 
+                    oninput="handleSearch()">
+                <button onclick="clearSearch()" class="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm">
+                    Limpiar
+                </button>
+            </div>
+            <div id="searchResults" class="max-h-40 overflow-y-auto"></div>
+        </div>
+
+        <div id="processInfo" class="hidden bg-white border-2 border-red-500 rounded-xl p-4 shadow-lg"></div>
+    </div>
+
+    <!-- Gráficos -->
+    <div class="grid lg:grid-cols-3 gap-4">
+        <div class="bg-white border border-gray-300 rounded-xl p-4 shadow-lg">
+            <h3 class="text-sm font-bold text-gray-900 mb-3">⚠️ % Error sobre Reglas</h3>
+            <div class="h-60">
+                <canvas id="chartErrors"></canvas>
+            </div>
+        </div>
+
+        <div class="bg-white border border-gray-300 rounded-xl p-4 shadow-lg">
+            <h3 class="text-sm font-bold text-gray-900 mb-3">📂 Procesos Más Frecuentes</h3>
+            <div class="h-60">
+                <canvas id="chartFrequent"></canvas>
+            </div>
+        </div>
+
+        <div class="bg-white border border-gray-300 rounded-xl p-4 shadow-lg">
+            <h3 class="text-sm font-bold text-gray-900 mb-3">👥 Top 10 Usuarios</h3>
+            <div class="h-60">
+                <canvas id="chartUsers"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Procesos Monitoreados -->
+    <div id="monitored" class="hidden bg-white border border-gray-300 rounded-xl p-4 shadow-lg"></div>
+
+    <!-- Tabla -->
+    <div class="bg-white border border-gray-300 rounded-xl p-4 shadow-lg">
+        <h3 class="text-lg font-bold text-gray-900 mb-3">📋 Últimos 15 Procesos Ejecutados</h3>
+        <div class="overflow-x-auto">
+            <table class="w-full text-xs">
+                <thead>
+                    <tr class="border-b-2 border-gray-300">
+                        <th class="text-left text-gray-700 font-semibold p-2">Usuario</th>
+                        <th class="text-left text-gray-700 font-semibold p-2">Proceso</th>
+                        <th class="text-left text-gray-700 font-semibold p-2">Fecha</th>
+                        <th class="text-center text-gray-700 font-semibold p-2">Estado</th>
+                        <th class="text-center text-gray-700 font-semibold p-2">Tipo</th>
+                        <th class="text-right text-gray-700 font-semibold p-2">Tiempo (min)</th>
+                        <th class="text-right text-gray-700 font-semibold p-2">Errores</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+let data = [];
+let fechasData = [];
+let correosData = [];
+let filterType = 'todos';
+let searchTerm = '';
+let selectedProcess = null;
+let charts = {};
+
+setInterval(updateCountdown, 1000);
+updateCountdown();
+
+function updateCountdown() {
+    const now = new Date();
+    const deadline = new Date();
+    deadline.setHours(15, 30, 0, 0);
+    
+    if (now > deadline) {
+        deadline.setDate(deadline.getDate() + 1);
+    }
+    
+    const diff = deadline - now;
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+    
+    document.getElementById('countdown').textContent = 
+        String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+}
+
+function handleFileUpload(event, type) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: function(results) {
+            if (type === 'datos') {
+                data = results.data;
+            } else if (type === 'fechas') {
+                fechasData = results.data;
+            } else if (type === 'correos') {
+                correosData = results.data;
+            }
+            renderDashboard();
+        }
+    });
+}
+
+function setFilter(type) {
+    filterType = type;
+    document.getElementById('btnTodos').className = 'px-2 py-1 rounded text-xs font-semibold ' + (type === 'todos' ? 'bg-red-600 text-white' : 'text-gray-600');
+    document.getElementById('btnProduccion').className = 'px-2 py-1 rounded text-xs font-semibold ' + (type === 'produccion' ? 'bg-red-600 text-white' : 'text-gray-600');
+    document.getElementById('btnPruebas').className = 'px-2 py-1 rounded text-xs font-semibold ' + (type === 'pruebas' ? 'bg-red-600 text-white' : 'text-gray-600');
+    renderDashboard();
+}
+
+function getFilteredData() {
+    return data.filter(function(d) {
+        const matchesType = filterType === 'todos' || d.tipo_ejecucion === filterType;
+        const matchesSearch = !searchTerm || 
+            (d.proceso && d.proceso.toLowerCase().includes(searchTerm.toLowerCase())) ||
+            (d.usuario && d.usuario.toLowerCase().includes(searchTerm.toLowerCase()));
+        return matchesType && matchesSearch;
+    });
+}
+
+function renderDashboard() {
+    if (data.length === 0) return;
+
+    const filtered = getFilteredData();
+    
+    const uniqueProc = new Set(filtered.map(function(d) { return d.proceso; }).filter(Boolean)).size;
+    document.getElementById('headerInfo').textContent = filtered.length + ' registros • ' + uniqueProc + ' procesos';
+    
+    const beforeDeadline = data.filter(function(d) {
+        const fecha = new Date(d.fecha);
+        return fecha.getHours() < 15 || (fecha.getHours() === 15 && fecha.getMinutes() <= 30);
+    }).length;
+    
+    const afterDeadline = data.filter(function(d) {
+        const fecha = new Date(d.fecha);
+        return fecha.getHours() > 15 || (fecha.getHours() === 15 && fecha.getMinutes() > 30);
+    }).length;
+    
+    const today = new Date().toISOString().split('T')[0];
+    const todayProc = filtered.filter(function(d) { return d.fecha && d.fecha.indexOf(today) === 0; }).length;
+    
+    const errors = filtered.filter(function(d) { return parseInt(d.reglas_errores || 0) > 0; }).length;
+    
+    document.getElementById('beforeDeadline').textContent = beforeDeadline;
+    document.getElementById('afterDeadline').textContent = afterDeadline;
+    document.getElementById('todayProcesses').textContent = todayProc;
+    document.getElementById('errorCount').textContent = errors;
+    
+    const errorCard = document.getElementById('errorCard');
+    const errorIcon = document.getElementById('errorIcon');
+    if (errors > 0) {
+        errorCard.className = 'bg-white border-2 border-red-500 rounded-xl p-4 shadow-lg hover:shadow-xl transition-shadow animate-pulse';
+        errorIcon.textContent = '⚠️';
+    } else {
+        errorCard.className = 'bg-white border-2 border-green-500 rounded-xl p-4 shadow-lg hover:shadow-xl transition-shadow';
+        errorIcon.textContent = '✅';
+    }
+    
+    const alertas = fechasData.filter(function(f) { return f.ESTADO === 'ALERTA'; }).length;
+    const badge = document.getElementById('alertBadge');
+    if (alertas > 0) {
+        badge.textContent = alertas;
+        badge.classList.remove('hidden');
+    } else {
+        badge.classList.add('hidden');
+    }
+    
+    renderWeeklyComparison();
+    renderCharts(filtered);
+    renderTable(filtered);
+    renderMonitored();
+}
+
+function renderWeeklyComparison() {
+    const now = new Date();
+    const oneWeek = new Date(now - 7 * 24 * 60 * 60 * 1000);
+    const twoWeeks = new Date(now - 14 * 24 * 60 * 60 * 1000);
+    
+    const current = data.filter(function(d) { return new Date(d.fecha) >= oneWeek; });
+    const previous = data.filter(function(d) {
+        const date = new Date(d.fecha);
+        return date >= twoWeeks && date < oneWeek;
+    });
+    
+    const currentErrors = current.filter(function(d) { return parseInt(d.reglas_errores || 0) > 0; }).length;
+    const previousErrors = previous.filter(function(d) { return parseInt(d.reglas_errores || 0) > 0; }).length;
+    
+    const currentTime = current.length > 0 ? 
+        (current.reduce(function(sum, d) { return sum + parseFloat((d.tiempo_ejecucion || '0').replace(',', '.')); }, 0) / current.length / 60).toFixed(2) : 0;
+    const previousTime = previous.length > 0 ?
+        (previous.reduce(function(sum, d) { return sum + parseFloat((d.tiempo_ejecucion || '0').replace(',', '.')); }, 0) / previous.length / 60).toFixed(2) : 0;
+    
+    const errorTrend = currentErrors < previousErrors ? 'green' : currentErrors > previousErrors ? 'red' : 'yellow';
+    const timeTrend = parseFloat(currentTime) < parseFloat(previousTime) ? 'green' : parseFloat(currentTime) > parseFloat(previousTime) ? 'red' : 'yellow';
+    
+    const html = '<div class="bg-white border-2 border-' + errorTrend + '-500 rounded-xl p-4 shadow-lg">' +
+        '<div class="flex items-center justify-between mb-2">' +
+        '<span class="text-xs">⚠️</span>' +
+        '<span class="text-xs">' + (currentErrors < previousErrors ? '📈' : currentErrors > previousErrors ? '📉' : '➡️') + '</span>' +
+        '</div>' +
+        '<p class="text-2xl font-bold text-gray-900 mb-1">' + currentErrors + '</p>' +
+        '<p class="text-xs text-gray-600">Errores vs ' + previousErrors + '</p>' +
+        '</div>' +
+        '<div class="bg-white border-2 border-' + timeTrend + '-500 rounded-xl p-4 shadow-lg">' +
+        '<div class="flex items-center justify-between mb-2">' +
+        '<span class="text-xs">⏰</span>' +
+        '<span class="text-xs">' + (parseFloat(currentTime) < parseFloat(previousTime) ? '📈' : parseFloat(currentTime) > parseFloat(previousTime) ? '📉' : '➡️') + '</span>' +
+        '</div>' +
+        '<p class="text-2xl font-bold text-gray-900 mb-1">' + currentTime + ' min</p>' +
+        '<p class="text-xs text-gray-600">Tiempo vs ' + previousTime + '</p>' +
+        '</div>' +
+        '<div class="bg-white border-2 border-blue-500 rounded-xl p-4 shadow-lg">' +
+        '<div class="flex items-center justify-between mb-2">' +
+        '<span class="text-xs">📊</span>' +
+        '<span class="text-xs">📂</span>' +
+        '</div>' +
+        '<p class="text-2xl font-bold text-gray-900 mb-1">' + current.length + '</p>' +
+        '<p class="text-xs text-gray-600">Ejecuciones vs ' + previous.length + '</p>' +
+        '</div>';
+    
+    document.getElementById('weeklyComparison').innerHTML = html;
+    
+    const currentProc = new Set(current.map(function(d) { return d.proceso; }).filter(Boolean));
+    const previousProc = new Set(previous.map(function(d) { return d.proceso; }).filter(Boolean));
+    const newProc = Array.from(currentProc).filter(function(p) { return !previousProc.has(p); });
+    
+    if (newProc.length > 0) {
+        const newProcHtml = '<h3 class="text-lg font-bold text-gray-900 mb-3 flex items-center gap-2">' +
+            '✨ Procesos Nuevos Certificados (' + newProc.length + ')' +
+            '</h3>' +
+            '<div class="flex flex-wrap gap-2">' +
+            newProc.map(function(p) { return '<span class="bg-white border border-green-400 rounded-lg px-3 py-1 text-sm font-semibold">' + p + '</span>'; }).join('') +
+            '</div>';
+        document.getElementById('newProcesses').innerHTML = newProcHtml;
+        document.getElementById('newProcesses').classList.remove('hidden');
+    }
+}
+
+function renderCharts(filtered) {
+    const errorData = {};
+    const freqData = {};
+    const userData = {};
+    
+    filtered.forEach(function(d) {
+        if (d.proceso) {
+            const reglas = parseInt(d.reglas_ejecutadas || 0);
+            const errores = parseInt(d.reglas_errores || 0);
+            if (!errorData[d.proceso]) errorData[d.proceso] = { reglas: 0, errores: 0 };
+            errorData[d.proceso].reglas += reglas;
+            errorData[d.proceso].errores += errores;
+            
+            freqData[d.proceso] = (freqData[d.proceso] || 0) + 1;
+        }
+        
+        if (d.usuario) {
+            const user = d.usuario.split('@')[0];
+            userData[user] = (userData[user] || 0) + 1;
+        }
+    });
+    
+    const errorProcesses = Object.entries(errorData)
+        .map(function(item) { 
+            return { 
+                proceso: item[0].substring(0, 18), 
+                rate: item[1].reglas > 0 ? (item[1].errores / item[1].reglas * 100).toFixed(2) : 0 
+            }; 
+        })
+        .sort(function(a, b) { return b.rate - a.rate; })
+        .slice(0, 8);
+    
+    const freqProcesses = Object.entries(freqData)
+        .map(function(item) { return { proceso: item[0].substring(0, 18), count: item[1] }; })
+        .sort(function(a, b) { return b.count - a.count; })
+        .slice(0, 8);
+    
+    const topUsers = Object.entries(userData)
+        .map(function(item) { return { user: item[0], total: item[1] }; })
+        .sort(function(a, b) { return b.total - a.total; })
+        .slice(0, 10);
+    
+    Object.keys(charts).forEach(function(key) { charts[key].destroy(); });
+    charts = {};
+    
+    const ctxErrors = document.getElementById('chartErrors').getContext('2d');
+    charts.errors = new Chart(ctxErrors, {
+        type: 'bar',
+        data: {
+            labels: errorProcesses.map(function(d) { return d.proceso; }),
+            datasets: [{
+                label: '% Error',
+                data: errorProcesses.map(function(d) { return d.rate; }),
+                backgroundColor: '#dc2626'
+            }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+    });
+    
+    const ctxFreq = document.getElementById('chartFrequent').getContext('2d');
+    charts.frequent = new Chart(ctxFreq, {
+        type: 'bar',
+        data: {
+            labels: freqProcesses.map(function(d) { return d.proceso; }),
+            datasets: [{
+                label: 'Cantidad',
+                data: freqProcesses.map(function(d) { return d.count; }),
+                backgroundColor: '#dc2626'
+            }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+    });
+    
+    const ctxUsers = document.getElementById('chartUsers').getContext('2d');
+    charts.users = new Chart(ctxUsers, {
+        type: 'bar',
+        data: {
+            labels: topUsers.map(function(d) { return d.user; }),
+            datasets: [{
+                label: 'Procesos',
+                data: topUsers.map(function(d) { return d.total; }),
+                backgroundColor: '#dc2626'
+            }]
+        },
+        options: { 
+            indexAxis: 'y',
+            responsive: true, 
+            maintainAspectRatio: false,
+            scales: { x: { beginAtZero: true } }
+        }
+    });
+}
+
+function renderTable(filtered) {
+    const tbody = document.getElementById('tableBody');
+    const rows = filtered.slice().reverse().slice(0, 15);
+    
+    tbody.innerHTML = rows.map(function(row) {
+        const usuario = row.usuario ? row.usuario.split('@')[0] : '-';
+        const proceso = row.proceso ? row.proceso.substring(0, 25) : '-';
+        const fecha = row.fecha ? row.fecha.substring(0, 16) : '-';
+        const estado = row.Estado || '-';
+        const tipo = row.tipo_ejecucion || '-';
+        const tiempo = (parseFloat((row.tiempo_ejecucion || '0').replace(',', '.')) / 60).toFixed(2);
+        const errores = row.reglas_errores || '0';
+        const hasErrors = parseInt(errores) > 0;
+        
+        return '<tr class="border-b border-gray-200 hover:bg-red-50">' +
+            '<td class="p-2 text-gray-700">' + usuario + '</td>' +
+            '<td class="p-2 text-gray-700">' + proceso + '</td>' +
+            '<td class="p-2 text-gray-700">' + fecha + '</td>' +
+            '<td class="p-2 text-center">' +
+            '<span class="px-2 py-1 rounded-full text-xs font-semibold ' + 
+            (estado === 'OK' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700') + '">' + 
+            estado + '</span>' +
+            '</td>' +
+            '<td class="p-2 text-center">' +
+            '<span class="px-2 py-1 rounded-full text-xs ' + 
+            (tipo === 'produccion' ? 'bg-red-100 text-red-700' : 'bg-purple-100 text-purple-700') + '">' + 
+            tipo + '</span>' +
+            '</td>' +
+            '<td class="p-2 text-right text-gray-700">' + tiempo + '</td>' +
+            '<td class="p-2 text-right">' +
+            '<span class="' + (hasErrors ? 'text-red-600 font-semibold' : 'text-green-600') + '">' + 
+            errores + '</span>' +
+            '</td>' +
+            '</tr>';
+    }).join('');
+}
+
+function renderMonitored() {
+    if (fechasData.length === 0) {
+        document.getElementById('monitored').classList.add('hidden');
+        return;
+    }
+    
+    const html = '<h3 class="text-lg font-bold text-gray-900 mb-3 flex items-center gap-2">' +
+        '📅 Procesos Monitoreados (' + fechasData.length + ')' +
+        '</h3>' +
+        '<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">' +
+        fechasData.map(function(p) {
+            const isAlert = p.ESTADO === 'ALERTA';
+            return '<div class="p-3 rounded-lg border-2 ' + (isAlert ? 'bg-red-50 border-red-500' : 'bg-green-50 border-green-500') + '">' +
+                '<div class="flex items-start justify-between mb-1">' +
+                '<h4 class="text-gray-900 font-bold text-xs truncate">' + p.PROCESO + '</h4>' +
+                '<span class="text-xs">' + (isAlert ? '⚠️' : '✅') + '</span>' +
+                '</div>' +
+                '<p class="text-xs text-gray-600 mb-2 truncate">' + (p['MAX de periodo_ejecucion_fin'] || 'N/A') + '</p>' +
+                '<span class="px-1 py-0.5 rounded text-xs font-semibold ' + 
+                (p.TIPO === 'PRODUCCION' ? 'bg-red-100 text-red-700' : 'bg-purple-100 text-purple-700') + '">' +
+                p.TIPO + '</span>' +
+                '</div>';
+        }).join('') +
+        '</div>';
+    
+    document.getElementById('monitored').innerHTML = html;
+    document.getElementById('monitored').classList.remove('hidden');
+}
+
+function handleSearch() {
+    searchTerm = document.getElementById('searchInput').value;
+
+    if (!searchTerm) {
+        document.getElementById('searchResults').innerHTML = '';
+        document.getElementById('processInfo').classList.add('hidden');
+        return;
+    }
+
+    const filtered = getFilteredData();
+    const processes = Array.from(new Set(filtered.map(function(d) { return d.proceso; })))
+        .filter(function(p) { return p && p.toLowerCase().includes(searchTerm.toLowerCase()); })
+        .slice(0, 15);
+
+    if (processes.length === 0) {
+        document.getElementById('searchResults').innerHTML =
+            '<p class="text-gray-500 text-xs">Sin resultados</p>';
+        return;
+    }
+
+    const html = processes.map(function(p) {
+        return '<div class="p-2 cursor-pointer hover:bg-red-50 rounded text-sm text-gray-800" ' +
+            'onclick="showProcessInfo(\'' + p.replace(/'/g, "\\'") + '\')">' +
+            p + '</div>';
+    }).join('');
+
+    document.getElementById('searchResults').innerHTML = html;
+}
+
+function showProcessInfo(proceso) {
+    selectedProcess = proceso;
+    const filtered = data.filter(function(d) { return d.proceso === proceso; });
+
+    if (filtered.length === 0) return;
+
+    const ejecuciones = filtered.length;
+    const errores = filtered.filter(function(d) { return parseInt(d.reglas_errores || 0) > 0; }).length;
+    const promedioTiempo = (
+        filtered.reduce(function(sum, d) { return sum + parseFloat((d.tiempo_ejecucion || '0').replace(',', '.')); }, 0) / ejecuciones / 60
+    ).toFixed(2);
+
+    const tipo = filtered[0].tipo_ejecucion || '-';
+
+    const html = '<h3 class="text-lg font-bold text-gray-900 mb-2 flex items-center gap-2">📄 ' + proceso + '</h3>' +
+        '<p class="text-sm text-gray-600 mb-2">Tipo: <span class="font-semibold">' + tipo.toUpperCase() + '</span></p>' +
+        '<p class="text-sm text-gray-600 mb-2">Ejecuciones: <span class="font-semibold">' + ejecuciones + '</span></p>' +
+        '<p class="text-sm text-gray-600 mb-2">Errores: <span class="font-semibold ' + 
+        (errores > 0 ? 'text-red-600' : 'text-green-600') + '">' + errores + '</span></p>' +
+        '<p class="text-sm text-gray-600 mb-2">Tiempo promedio: <span class="font-semibold">' + promedioTiempo + ' min</span></p>' +
+        '<div class="mt-2">' +
+        '<h4 class="font-semibold text-sm mb-1">Últimas ejecuciones:</h4>' +
+        '<ul class="text-xs text-gray-700 max-h-40 overflow-y-auto border rounded-lg p-2 bg-gray-50">' +
+        filtered.slice(-5).reverse().map(function(d) {
+            return '<li class="flex justify-between border-b border-gray-200 py-1">' +
+                '<span>' + (d.fecha || '-') + '</span>' +
+                '<span class="' + (parseInt(d.reglas_errores || 0) > 0 ? 'text-red-600' : 'text-green-600') + '">' +
+                (parseInt(d.reglas_errores || 0) > 0 ? 'Error' : 'OK') +
+                '</span>' +
+                '</li>';
+        }).join('') +
+        '</ul>' +
+        '</div>';
+
+    document.getElementById('processInfo').innerHTML = html;
+    document.getElementById('processInfo').classList.remove('hidden');
+}
+
+function clearSearch() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('searchResults').innerHTML = '';
+    document.getElementById('processInfo').classList.add('hidden');
+    searchTerm = '';
+    renderDashboard();
+}
+</script>
+</body>
+</html>
